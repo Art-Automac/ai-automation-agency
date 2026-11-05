@@ -1,0 +1,158 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        STACK_NAME   = 'chatwoot'
+        COMPOSE_FILE = 'core/chatwoot/chatwoot.yaml'
+        IMAGE        = 'ghcr.io/fazer-ai/chatwoot:v4.19.0-fazer-ai.138'
+
+        CHATWOOT_DOMAIN             = credentials('chatwoot-domain')
+        CHATWOOT_SECRET_KEY         = credentials('chatwoot-secret-key')
+        CHATWOOT_DB_HOST            = credentials('evolution-db-host')
+        CHATWOOT_DB_USER            = credentials('postgres-user')
+        CHATWOOT_DB_PASSWORD        = credentials('postgres-password')
+        CHATWOOT_REDIS_URL          = credentials('chatwoot-redis-url')
+        CHATWOOT_SMTP_USERNAME      = credentials('chatwoot-smtp-username')
+        CHATWOOT_SMTP_PASSWORD      = credentials('chatwoot-smtp-password')
+        INSTAGRAM_APP_ID            = credentials('instagram-app-id')
+        INSTAGRAM_APP_SECRET        = credentials('instagram-app-secret')
+        INSTAGRAM_VERIFY_TOKEN      = credentials('instagram-verify-token')
+        MAILER_INBOUND_EMAIL_DOMAIN = credentials('chatwoot-mailer-inbound-email-domain')
+        GOOGLE_CLIENT_ID            = credentials('chatwoot-google-client-id')
+        GOOGLE_CLIENT_SECRET        = credentials('chatwoot-google-client-secret')
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Login GHCR & Pull') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'github-credentials',
+                        usernameVariable: 'GHCR_USER',
+                        passwordVariable: 'GHCR_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$GHCR_PASSWORD" | docker login ghcr.io \
+                            -u "$GHCR_USER" \
+                            --password-stdin
+                        docker pull "$IMAGE"
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    # Gera o arquivo .env no diretório chatwoot com as variáveis reais interpoladas
+                    cat <<EOF > core/chatwoot/.env
+CHATWOOT_DOMAIN=${CHATWOOT_DOMAIN}
+CHATWOOT_SECRET_KEY=${CHATWOOT_SECRET_KEY}
+CHATWOOT_DB_HOST=${CHATWOOT_DB_HOST}
+CHATWOOT_DB_USER=${CHATWOOT_DB_USER}
+CHATWOOT_DB_PASSWORD=${CHATWOOT_DB_PASSWORD}
+CHATWOOT_REDIS_URL=${CHATWOOT_REDIS_URL}
+CHATWOOT_SMTP_USERNAME=${CHATWOOT_SMTP_USERNAME}
+CHATWOOT_SMTP_PASSWORD=${CHATWOOT_SMTP_PASSWORD}
+INSTAGRAM_APP_ID=${INSTAGRAM_APP_ID}
+INSTAGRAM_APP_SECRET=${INSTAGRAM_APP_SECRET}
+INSTAGRAM_VERIFY_TOKEN=${INSTAGRAM_VERIFY_TOKEN}
+MAILER_INBOUND_EMAIL_DOMAIN=${MAILER_INBOUND_EMAIL_DOMAIN}
+GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+EOF
+
+                    # Entra na pasta para que o Docker stack deploy carregue o .env
+                    cd core/chatwoot
+                    docker stack deploy \
+                        --with-registry-auth \
+                        --resolve-image always \
+                        -c chatwoot.yaml \
+                        "${STACK_NAME}"
+
+                    # Aguarda 15 segundos para que o Swarm inicie a troca dos containers
+                    sleep 15
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "Iniciando monitoramento de saúde do ${STACK_NAME} (até 30 tentativas)..."
+                    def success = false
+
+                    for (int i = 1; i <= 30; i++) {
+                        sh '''
+                            docker stack services "${STACK_NAME}" \
+                                --format 'servico={{.Name}} replicas={{.Replicas}}'
+                        '''
+
+                        def notReady = sh(
+                            script: '''
+                                docker stack services "${STACK_NAME}" \
+                                    --format '{{.Replicas}}' |
+                                    awk -F/ '$1 != $2 {c++} END {print c+0}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        // Teste de requisição HTTP na URL principal da aplicação
+                        def httpStatus = sh(
+                            script: '''
+                                curl -k -s -o /dev/null -w "%{http_code}" -m 10 "https://${CHATWOOT_DOMAIN}" || echo "000"
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Tentativa ${i}/30 — Containers pendentes: ${notReady} | Resposta HTTP: ${httpStatus}"
+
+                        // Sucesso se: todas as réplicas estiverem 1/1 E o HTTP for 200 (OK) ou 301/302 (Redirect)
+                        if (notReady == '0' && (httpStatus == '200' || httpStatus == '301' || httpStatus == '302')) {
+                            echo "✅ Sucesso! Todos os serviços convergidos e aplicação respondendo (HTTP ${httpStatus})."
+                            success = true
+                            break
+                        }
+
+                        if (httpStatus == '404') {
+                            echo "⚠️  Traefik retornando 404 (aplicação ainda inicializando ou registrando rota)..."
+                        } else if (httpStatus == '502' || httpStatus == '503') {
+                            echo "⚠️  Aplicação inicializando o Rails Puma (HTTP ${httpStatus})..."
+                        }
+
+                        sleep 10
+                    }
+
+                    if (!success) {
+                        error "❌ Timeout de 5 minutos — a aplicação não subiu ou não respondeu com sucesso na web."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deploy do ${STACK_NAME} concluído com sucesso."
+        }
+
+        failure {
+            echo "Deploy do ${STACK_NAME} falhou."
+        }
+
+        always {
+            sh '''
+                docker logout ghcr.io || true
+                rm -f core/chatwoot/.env || true
+            '''
+        }
+    }
+}

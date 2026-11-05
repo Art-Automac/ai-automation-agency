@@ -1,0 +1,124 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        STACK_NAME   = "kokoro-tts"
+        COMPOSE_FILE = 'core/kokoro-tts/docker-compose.yml"
+        IMAGE        = "ghcr.io/remsky/kokoro-fastapi-cpu:latest"
+        
+        KOKORO_API_KEY     = credentials('kokoro-api-key-secret')
+        TRAEFIK_HOST       = credentials('traefik-host-secret')
+        TRAEFIK_BASIC_AUTH = credentials('traefik-basic-auth-secret')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Pull Image') {
+            steps {
+                sh 'docker pull "${IMAGE}"'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    # Gera o arquivo .env no diretório kokoro-tts com as variáveis reais
+                    cat <<EOF > core/kokoro-tts/.env
+TRAEFIK_HOST=${TRAEFIK_HOST}
+KOKORO_API_KEY=${KOKORO_API_KEY}
+EOF
+
+                    # Blinda os cifrões para o Swarm no middleware do Traefik
+                    SAFE_AUTH=$(echo "$TRAEFIK_BASIC_AUTH" | sed 's/\\$/\\$\\$/g')
+                    sed -i "s|__BASIC_AUTH__|$SAFE_AUTH|g" ${COMPOSE_FILE}
+
+                    # Deploy contínuo no Docker Swarm
+                    cd core/kokoro-tts
+                    docker stack deploy \
+                        --compose-file docker-compose.yml \
+                        --resolve-image always \
+                        "${STACK_NAME}"
+
+                    # Aguarda 15 segundos para início da transição
+                    sleep 15
+                '''
+            }
+        }
+
+        stage('Health Check & Test API') {
+            steps {
+                script {
+                    echo "Monitorando inicialização do Kokoro TTS e carregamento do modelo ONNX..."
+                    def success = false
+
+                    for (int i = 1; i <= 30; i++) {
+                        sh '''
+                            docker stack services "${STACK_NAME}" \
+                                --format 'servico={{.Name}} replicas={{.Replicas}}'
+                        '''
+
+                        def notReady = sh(
+                            script: '''
+                                docker stack services "${STACK_NAME}" \
+                                    --format '{{.Replicas}}' |
+                                    awk -F/ '$1 != $2 {c++} END {print c+0}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        // Teste de síntese de voz na API
+                        def httpStatus = sh(
+                            script: '''
+                                curl -k -s -o /dev/null -w "%{http_code}" -X POST "https://${TRAEFIK_HOST}/v1/audio/speech" \
+                                    -H "Authorization: Bearer ${KOKORO_API_KEY}" \
+                                    -H "Content-Type: application/json" \
+                                    -d '{"model": "kokoro", "input": "Teste", "voice": "af_bella"}' \
+                                    -m 10 || echo "000"
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Tentativa ${i}/30 — Containers pendentes: ${notReady} | Resposta API: ${httpStatus}"
+
+                        if (notReady == '0' && httpStatus == '200') {
+                            echo "✅ Sucesso! Modelo carregado e API respondendo (HTTP 200)."
+                            success = true
+                            break
+                        }
+
+                        if (httpStatus == '404' || httpStatus == '502' || httpStatus == '503') {
+                            echo "⚠️  API inicializando e carregando modelos neurais na memória..."
+                        }
+
+                        sleep 10
+                    }
+
+                    if (!success) {
+                        error "❌ Timeout de 5 minutos — a API do Kokoro TTS não respondeu com sucesso."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deploy do ${STACK_NAME} concluído com sucesso."
+        }
+        failure {
+            echo "Deploy do ${STACK_NAME} falhou."
+        }
+        always {
+            // Restaura o compose original e limpa o .env gerado
+            sh '''
+                git checkout -- "${COMPOSE_FILE}" || true
+                rm -f core/kokoro-tts/.env || true
+            '''
+        }
+    }
+}

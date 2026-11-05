@@ -1,0 +1,61 @@
+# ==============================================================================
+# Git Ignore - Core Infrastructure
+# ==============================================================================
+
+# Environment files & secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Credentials & Keys
+*.key
+*.pem
+*.crt
+*.pfx
+*.p12
+*.id_rsa
+id_rsa*
+*.pub
+jenkins-credentials.groovy
+
+# Database dumps & backup files
+*.sql
+*.sql.gz
+*.tar.gz
+*.dump
+/backups/
+
+# Compressed archives
+*.zip
+*.tar
+*.gz
+*.bz2
+*.7z
+*.rar
+
+# Logs
+*.log
+logs/
+*.pid
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Node & package artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker & local data
+traefik-acme/
+acme.json
+data/

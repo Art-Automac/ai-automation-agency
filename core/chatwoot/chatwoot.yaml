@@ -1,0 +1,135 @@
+version: "3.8"
+
+x-chatwoot-env: &chatwoot-env
+  - CHATWOOT_HUB_URL=https://${CHATWOOT_DOMAIN}
+  - INSTALLATION_NAME=${INSTALLATION_NAME:-SuaEmpresa}
+  - BRAND_NAME=${BRAND_NAME:-SuaEmpresa}
+  - BRAND_URL=https://${CHATWOOT_DOMAIN}
+  - NODE_ENV=production
+  - RAILS_ENV=production
+  - INSTALLATION_ENV=docker
+  - SECRET_KEY_BASE=${CHATWOOT_SECRET_KEY}
+  - FRONTEND_URL=https://${CHATWOOT_DOMAIN}
+  - DEFAULT_LOCALE=pt_BR
+  - FORCE_SSL=true
+  - ENABLE_ACCOUNT_SIGNUP=false
+  - POSTGRES_HOST=${CHATWOOT_DB_HOST}
+  - POSTGRES_USERNAME=${CHATWOOT_DB_USER}
+  - POSTGRES_PASSWORD=${CHATWOOT_DB_PASSWORD}
+  - POSTGRES_DATABASE=chatwoot
+  - REDIS_URL=${CHATWOOT_REDIS_URL}
+  - ACTIVE_STORAGE_SERVICE=local
+  - RAILS_LOG_TO_STDOUT=true
+  - USE_INBOX_AVATAR_FOR_BOT=true
+  - SIDEKIQ_CONCURRENCY=10
+  - RACK_TIMEOUT_SERVICE_TIMEOUT=0
+  - RAILS_MAX_THREADS=5
+  - WEB_CONCURRENCY=2
+  - ENABLE_RACK_ATTACK=false
+  - WEBHOOKS_TRIGGER_TIMEOUT=40
+  - MAILER_SENDER_EMAIL=${CHATWOOT_SMTP_USERNAME}
+  - SMTP_DOMAIN=${MAILER_INBOUND_EMAIL_DOMAIN}
+  - SMTP_ADDRESS=${SMTP_ADDRESS:-smtp.seudominio.com.br}
+  - SMTP_PORT=${SMTP_PORT:-587}
+  - SMTP_USERNAME=${CHATWOOT_SMTP_USERNAME}
+  - SMTP_PASSWORD=${CHATWOOT_SMTP_PASSWORD}
+  - SMTP_AUTHENTICATION=login
+  - SMTP_ENABLE_STARTTLS_AUTO=true
+  - SMTP_OPENSSL_VERIFY_MODE=peer
+  - MAILER_INBOUND_EMAIL_DOMAIN=${MAILER_INBOUND_EMAIL_DOMAIN}
+  - TZ=America/Sao_Paulo
+  - INSTAGRAM_APP_ID=${INSTAGRAM_APP_ID}
+  - INSTAGRAM_APP_SECRET=${INSTAGRAM_APP_SECRET}
+  - INSTAGRAM_VERIFY_TOKEN=${INSTAGRAM_VERIFY_TOKEN}
+  - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+  - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+  - GOOGLE_OAUTH_CALLBACK_URL=https://${CHATWOOT_DOMAIN}/omniauth/google_oauth2/callback
+  - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_CLIENT_ID}
+  - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+  - HTTP_OPEN_TIMEOUT=30
+  - HTTP_READ_TIMEOUT=30
+
+x-chatwoot-volumes: &chatwoot-volumes
+  - chatwoot_data:/app/storage
+  - /opt/chatwoot-branding/logo.png:/app/public/brand-assets/logo.png:ro
+  - /opt/chatwoot-branding/favicon.png:/app/public/favicon.png:ro
+
+services:
+  chatwoot_app:
+    image: ghcr.io/fazer-ai/chatwoot:v4.19.0-fazer-ai.138
+    command: bundle exec rails s -p 3000 -b 0.0.0.0
+    entrypoint: docker/entrypoints/rails.sh
+    environment: *chatwoot-env
+    volumes: *chatwoot-volumes
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == worker1
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_public
+        - traefik.http.routers.chatwoot.rule=Host(`${CHATWOOT_DOMAIN}`)
+        - traefik.http.routers.chatwoot.entrypoints=websecure
+        - traefik.http.routers.chatwoot.tls=true
+        - traefik.http.routers.chatwoot.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.chatwoot.service=chatwoot
+        - traefik.http.services.chatwoot.loadbalancer.server.port=3000
+        - traefik.http.services.chatwoot.loadbalancer.passhostheader=true
+        - traefik.http.middlewares.chatwoot-headers.headers.customrequestheaders.X-Forwarded-Proto=https
+        - traefik.http.routers.chatwoot.middlewares=chatwoot-headers@docker
+
+  chatwoot_sidekiq:
+    image: ghcr.io/fazer-ai/chatwoot:v4.19.0-fazer-ai.138
+    command: bundle exec sidekiq -C config/sidekiq.yml
+    environment: *chatwoot-env
+    volumes: *chatwoot-volumes
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == worker1
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+
+networks:
+  network_public:
+    external: true
+
+volumes:
+  chatwoot_data:
+    driver: local

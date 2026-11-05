@@ -1,0 +1,110 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        STACK_NAME   = 'pgadmin'
+        COMPOSE_FILE = 'core/pgadmin/pgadmin.yaml'
+        IMAGE        = 'dpage/pgadmin4:8.9'
+
+        PGADMIN_EMAIL    = credentials('pgadmin-email')
+        PGADMIN_PASSWORD = credentials('pgadmin-password')
+        PGADMIN_DOMAIN   = credentials('pgadmin-domain')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Pull Image') {
+            steps {
+                sh 'docker pull "${IMAGE}"'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    cat <<EOF > core/pgadmin/.env
+PGADMIN_EMAIL=${PGADMIN_EMAIL}
+PGADMIN_PASSWORD=${PGADMIN_PASSWORD}
+PGADMIN_DOMAIN=${PGADMIN_DOMAIN}
+EOF
+
+                    cd core/pgadmin
+                    docker stack deploy \
+                        --resolve-image always \
+                        -c pgadmin.yaml \
+                        "${STACK_NAME}"
+
+                    sleep 15
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "Iniciando monitoramento do pgAdmin (até 30 tentativas)..."
+                    def success = false
+
+                    for (int i = 1; i <= 30; i++) {
+                        sh '''
+                            docker stack services "${STACK_NAME}" \
+                                --format 'servico={{.Name}} replicas={{.Replicas}}'
+                        '''
+
+                        def notReady = sh(
+                            script: '''
+                                docker stack services "${STACK_NAME}" \
+                                    --format '{{.Replicas}}' |
+                                    awk -F/ '$1 != $2 {c++} END {print c+0}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        // Teste de requisição HTTP na rota do pgAdmin
+                        def httpStatus = sh(
+                            script: '''
+                                curl -k -s -o /dev/null -w "%{http_code}" -m 10 "https://${PGADMIN_DOMAIN}" || echo "000"
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Tentativa ${i}/30 — Containers pendentes: ${notReady} | Resposta pgAdmin: ${httpStatus}"
+
+                        if (notReady == '0' && (httpStatus == '200' || httpStatus == '302')) {
+                            echo "✅ Sucesso! pgAdmin pronto e respondendo (HTTP ${httpStatus})."
+                            success = true
+                            break
+                        }
+
+                        if (httpStatus == '404') {
+                            echo "⚠️  Traefik aguardando o container pgAdmin iniciar..."
+                        }
+
+                        sleep 10
+                    }
+
+                    if (!success) {
+                        error "❌ Timeout de 5 minutos — o pgAdmin não subiu ou não respondeu com sucesso."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deploy do ${STACK_NAME} concluído com sucesso."
+        }
+        failure {
+            echo "Deploy do ${STACK_NAME} falhou."
+        }
+        always {
+            sh 'rm -f core/pgadmin/.env || true'
+        }
+    }
+}

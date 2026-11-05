@@ -1,0 +1,107 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        COMPOSE_FILE = 'monitoring/node-exporter/node-exporter.yml'
+        SSH_KEY                = credentials('SSH_JENKINS')
+        IP_MANAGER_1  = credentials('ip-manager-1')
+        IP_WORKER_1       = credentials('ip-worker-1')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Deploy Node Exporter') {
+            steps {
+                sh '''
+                    RESULTS=""
+
+                    deploy_node_exporter() {
+                        HOST=$1
+                        NAME=$2
+
+                        echo "=================================================="
+                        echo "Deploying to $NAME ($HOST)..."
+                        echo "=================================================="
+
+                        # Cria o arquivo de métrica customizada
+                        echo "node_custom_name{name=\\"$NAME\\"} 1" > /tmp/hostname_${NAME}.prom
+
+                        # Cria o diretório do textfile collector
+                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@$HOST \
+                            "mkdir -p /var/lib/node_exporter/textfile_collector"
+                        if [ $? -ne 0 ]; then
+                            echo "[$NAME] FAILED at step: mkdir (SSH connection or permission issue)"
+                            RESULTS="${RESULTS}FAIL  | $NAME | $HOST | step: mkdir/ssh-connect\\n"
+                            return 1
+                        fi
+
+                        # Envia o arquivo .prom
+                        scp -i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+                            /tmp/hostname_${NAME}.prom \
+                            root@$HOST:/var/lib/node_exporter/textfile_collector/hostname.prom
+                        if [ $? -ne 0 ]; then
+                            echo "[$NAME] FAILED at step: scp (hostname.prom)"
+                            RESULTS="${RESULTS}FAIL  | $NAME | $HOST | step: scp-prom\\n"
+                            return 1
+                        fi
+
+                        # Envia o compose
+                        scp -i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+                            ${COMPOSE_FILE} \
+                            root@$HOST:/tmp/node-exporter.yml
+                        if [ $? -ne 0 ]; then
+                            echo "[$NAME] FAILED at step: scp (compose)"
+                            RESULTS="${RESULTS}FAIL  | $NAME | $HOST | step: scp-compose\\n"
+                            return 1
+                        fi
+
+                        # Remove container antigo e sobe com docker compose
+                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@$HOST "
+                            docker rm -f node-exporter 2>/dev/null || true
+                            docker compose -f /tmp/node-exporter.yml pull
+                            docker compose -f /tmp/node-exporter.yml up -d
+                        "
+                        if [ $? -ne 0 ]; then
+                            echo "[$NAME] FAILED at step: docker compose up"
+                            RESULTS="${RESULTS}FAIL  | $NAME | $HOST | step: compose-up\\n"
+                            return 1
+                        fi
+
+                        echo "[$NAME] OK"
+                        RESULTS="${RESULTS}OK    | $NAME | $HOST | -\\n"
+                    }
+
+                    deploy_node_exporter $IP_MANAGER_1 "Manager-1" || true
+                    deploy_node_exporter $IP_WORKER_1       "Worker-1"      || true
+
+                    echo ""
+                    echo "=================================================="
+                    echo "RESUMO DO DEPLOY"
+                    echo "=================================================="
+                    echo "STATUS | NAME | HOST | FAILED STEP"
+                    printf "$RESULTS"
+
+                    if echo "$RESULTS" | grep -q "FAIL"; then
+                        echo ""
+                        echo "Uma ou mais máquinas falharam. Veja a tabela acima."
+                        exit 1
+                    fi
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Node Exporter deployed on all machines!'
+        }
+        failure {
+            echo '❌ Deploy failed on one or more machines!'
+        }
+    }
+}

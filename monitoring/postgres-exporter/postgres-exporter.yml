@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+
+  postgres-exporter:
+
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+
+    environment:
+      DATA_SOURCE_URI: "postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      DATA_SOURCE_USER: "${POSTGRES_USER}"
+      DATA_SOURCE_PASS: "${POSTGRES_PASSWORD}"
+
+    networks:
+      - network_public
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+networks:
+
+  network_public:
+    external: true

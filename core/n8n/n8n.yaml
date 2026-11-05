@@ -1,0 +1,160 @@
+version: "3.8"
+x-n8n-env: &n8n-env
+  - DB_TYPE=postgresdb
+  - DB_POSTGRESDB_HOST=${N8N_DB_HOST}
+  - DB_POSTGRESDB_PORT=${N8N_DB_PORT}
+  - DB_POSTGRESDB_USER=${N8N_DB_USER}
+  - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD}
+  - DB_POSTGRESDB_DATABASE=${N8N_DB_NAME}
+  - QUEUE_BULL_REDIS_HOST=${N8N_REDIS_HOST}
+  - QUEUE_BULL_REDIS_PORT=${N8N_REDIS_PORT}
+  - QUEUE_BULL_REDIS_PASSWORD=${N8N_REDIS_PASSWORD}
+  - QUEUE_BULL_REDIS_DB=${N8N_REDIS_DB}
+  - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+  - N8N_HOST=${N8N_HOST}
+  - N8N_PROTOCOL=https
+  - N8N_EDITOR_BASE_URL=https://${N8N_DOMAIN}/
+  - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+  - EXECUTIONS_MODE=queue
+  - EXECUTIONS_DATA_PRUNE=true
+  - EXECUTIONS_DATA_MAX_AGE=1032
+  - GENERIC_TIMEZONE=America/Sao_Paulo
+  - TZ=America/Sao_Paulo
+  - NODES_EXCLUDE=[]
+  - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
+  - N8N_UNVERIFIED_PACKAGES_ENABLED=true
+  - N8N_RUNNERS_TASK_TIMEOUT=300
+  - N8N_PROXY_HOPS=1
+  - N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES=2147483648
+  - N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES=5000
+  - N8N_EMAIL_MODE=smtp
+  - N8N_SMTP_HOST=${N8N_SMTP_HOST:-smtp.seudominio.com.br}
+  - N8N_SMTP_PORT=${N8N_SMTP_PORT:-587}
+  - N8N_SMTP_USER=${N8N_SMTP_USER}
+  - N8N_SMTP_PASS=${N8N_SMTP_PASSWORD}
+  - N8N_SMTP_SENDER=${N8N_SMTP_USER}
+  - N8N_SMTP_SSL=false
+  - N8N_METRICS=true
+services:
+  n8n_editor:
+    image: n8nio/n8n:2.38.7
+    command: start
+    environment: *n8n-env
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == worker1
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_public
+        - traefik.http.routers.n8n-editor.rule=Host(`${N8N_DOMAIN}`)
+        - traefik.http.routers.n8n-editor.entrypoints=websecure
+        - traefik.http.routers.n8n-editor.priority=1
+        - traefik.http.routers.n8n-editor.tls=true
+        - traefik.http.routers.n8n-editor.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.n8n-editor.service=n8n-editor
+        - traefik.http.services.n8n-editor.loadbalancer.server.port=5678
+        - traefik.http.services.n8n-editor.loadbalancer.passHostHeader=true
+        # Test webhook → main/editor
+        - traefik.http.routers.n8n-webhook-test.rule=Host(`${N8N_WEBHOOK_DOMAIN}`) && PathPrefix(`/webhook-test`)
+        - traefik.http.routers.n8n-webhook-test.entrypoints=websecure
+        - traefik.http.routers.n8n-webhook-test.priority=10
+        - traefik.http.routers.n8n-webhook-test.tls=true
+        - traefik.http.routers.n8n-webhook-test.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.n8n-webhook-test.service=n8n-editor
+  n8n_webhook:
+    image: n8nio/n8n:2.38.7
+    command: webhook
+    environment: *n8n-env
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == worker1
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_public
+        - traefik.http.routers.n8n-webhook.rule=Host(`${N8N_WEBHOOK_DOMAIN}`) && (PathPrefix(`/webhook`) || PathPrefix(`/webhook-waiting`))
+        - traefik.http.routers.n8n-webhook.entrypoints=websecure
+        - traefik.http.routers.n8n-webhook.priority=1
+        - traefik.http.routers.n8n-webhook.tls=true
+        - traefik.http.routers.n8n-webhook.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.n8n-webhook.service=n8n-webhook
+        - traefik.http.services.n8n-webhook.loadbalancer.server.port=5678
+        - traefik.http.services.n8n-webhook.loadbalancer.passHostHeader=true
+  n8n_worker:
+    image: n8nio/n8n:2.38.7
+    command: worker
+    environment: *n8n-env
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == worker1
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+networks:
+  network_public:
+    external: true
+volumes:
+  n8n_data:
+    driver: local

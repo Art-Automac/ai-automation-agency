@@ -1,0 +1,130 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        STACK_NAME   = 'evolution'
+        COMPOSE_FILE = 'core/evolution/evolution.yaml'
+        IMAGE        = 'evoapicloud/evolution-api:v2.3.7'
+
+        EVOLUTION_DOMAIN          = credentials('evolution-domain')
+        EVOLUTION_API_KEY         = credentials('evolution-api-key')
+        EVOLUTION_DB_HOST         = credentials('evolution-db-host')
+        EVOLUTION_DB_PORT         = credentials('evolution-db-port')
+        EVOLUTION_DB_USER         = credentials('postgres-user')
+        EVOLUTION_DB_PASSWORD     = credentials('postgres-password')
+        EVOLUTION_REDIS_URL       = credentials('evolution-redis-url')
+        EVOLUTION_CLIENT_NAME     = credentials('evolution-client-name')
+        WA_BUSINESS_TOKEN_WEBHOOK = credentials('WA_BUSINESS_TOKEN_WEBHOOK')
+        WA_BUSINESS_VERSION       = credentials('WA_BUSINESS_VERSION')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Pull Image') {
+            steps {
+                sh 'docker pull "${IMAGE}"'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    # Gera o arquivo .env no diretório evolution com as variáveis reais
+                    cat <<EOF > core/evolution/.env
+EVOLUTION_DOMAIN=${EVOLUTION_DOMAIN}
+EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+EVOLUTION_DB_HOST=${EVOLUTION_DB_HOST}
+EVOLUTION_DB_PORT=${EVOLUTION_DB_PORT}
+EVOLUTION_DB_USER=${EVOLUTION_DB_USER}
+EVOLUTION_DB_PASSWORD=${EVOLUTION_DB_PASSWORD}
+EVOLUTION_REDIS_URL=${EVOLUTION_REDIS_URL}
+EVOLUTION_CLIENT_NAME=${EVOLUTION_CLIENT_NAME}
+WA_BUSINESS_TOKEN_WEBHOOK=${WA_BUSINESS_TOKEN_WEBHOOK}
+WA_BUSINESS_VERSION=${WA_BUSINESS_VERSION}
+EOF
+
+                    # Entra na pasta para que o Docker stack deploy carregue o .env
+                    cd core/evolution
+                    docker stack deploy \
+                        --resolve-image always \
+                        -c evolution.yaml \
+                        "${STACK_NAME}"
+
+                    # Aguarda 15 segundos para que o Swarm inicie a transição dos containers
+                    sleep 15
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "Iniciando monitoramento de saúde do ${STACK_NAME} (até 30 tentativas)..."
+                    def success = false
+
+                    for (int i = 1; i <= 30; i++) {
+                        sh '''
+                            docker stack services "${STACK_NAME}" \
+                                --format 'servico={{.Name}} replicas={{.Replicas}}'
+                        '''
+
+                        def notReady = sh(
+                            script: '''
+                                docker stack services "${STACK_NAME}" \
+                                    --format '{{.Replicas}}' |
+                                    awk -F/ '$1 != $2 {c++} END {print c+0}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        // Teste de requisição HTTP na raiz da Evolution API
+                        def httpStatus = sh(
+                            script: '''
+                                curl -k -s -o /dev/null -w "%{http_code}" -m 10 "https://${EVOLUTION_DOMAIN}" || echo "000"
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Tentativa ${i}/30 — Containers pendentes: ${notReady} | Resposta HTTP: ${httpStatus}"
+
+                        // Sucesso se: réplicas estiverem 1/1 E o HTTP for 200 (OK)
+                        if (notReady == '0' && (httpStatus == '200' || httpStatus == '301' || httpStatus == '302')) {
+                            echo "✅ Sucesso! Evolution API pronta e respondendo (HTTP ${httpStatus})."
+                            success = true
+                            break
+                        }
+
+                        if (httpStatus == '404') {
+                            echo "⚠️  Traefik retornando 404 (aguardando o container Evolution iniciar)..."
+                        } else if (httpStatus == '502' || httpStatus == '503') {
+                            echo "⚠️  Evolution API inicializando (HTTP ${httpStatus})..."
+                        }
+
+                        sleep 10
+                    }
+
+                    if (!success) {
+                        error "❌ Timeout de 5 minutos — a Evolution API não subiu ou não respondeu na web."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deploy do ${STACK_NAME} concluído com sucesso."
+        }
+        failure {
+            echo "Deploy do ${STACK_NAME} falhou."
+        }
+        always {
+            sh 'rm -f core/evolution/.env || true'
+        }
+    }
+}

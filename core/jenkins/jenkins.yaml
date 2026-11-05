@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  jenkins:
+    image: jenkins/jenkins:2.580.1-jdk25
+    container_name: jenkins
+    user: root
+    environment:
+      JENKINS_OPTS: "${JENKINS_OPTS:---httpPort=8080}"
+      JAVA_OPTS: "${JAVA_OPTS:--Xmx1024m -Xms512m}"
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      # Socket sem restrição :ro para comandos de escrita/execução
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Binário principal do Docker CLI do host
+      - /usr/bin/docker:/usr/bin/docker
+      # Diretório padrão do plugin docker compose (CLI plugins)
+      - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins:ro
+    networks:
+      - network_public
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+        - "traefik.http.routers.jenkins.rule=Host(`${JENKINS_DOMAIN:-jenkins.seudominio.com.br}`)"
+        - traefik.http.routers.jenkins.entrypoints=websecure
+        - traefik.http.routers.jenkins.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.jenkins.tls=true
+        - traefik.http.services.jenkins.loadbalancer.server.port=8080
+        - traefik.docker.network=network_public
+
+volumes:
+  jenkins-data:
+
+networks:
+  network_public:
+    external: true

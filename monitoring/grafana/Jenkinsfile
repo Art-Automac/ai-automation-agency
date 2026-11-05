@@ -1,0 +1,90 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        STACK_NAME   = 'grafana'
+        COMPOSE_FILE = 'monitoring/grafana/grafana.yml'
+
+        GRAFANA_USER     = credentials('grafana-user')
+        GRAFANA_PASSWORD = credentials('grafana-password')
+        GRAFANA_HOST     = credentials('grafana-host')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Pull Images') {
+            steps {
+                sh '''
+                    docker pull grafana/grafana:10.4.2
+                '''
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh 'docker stack deploy --with-registry-auth --resolve-image always -c ${COMPOSE_FILE} ${STACK_NAME}'
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "Aguardando inicialização da aplicação (até 30 tentativas)..."
+                    def success = false
+                    for (int i = 1; i <= 30; i++) {
+                        // 1. Mostra status dos serviços no log
+                        sh 'docker stack services "${STACK_NAME}" --format "servico={{.Name}} replicas={{.Replicas}}"'
+
+                        // 2. Conta containers não convergidos
+                        def notReady = sh(
+                            script: 'docker stack services "${STACK_NAME}" --format "{{.Replicas}}" | awk -F/ \'$1 != $2 {c++} END {print c+0}\'',
+                            returnStdout: true
+                        ).trim()
+
+                        // 3. Testa requisição HTTP real no domínio público
+                        def httpStatus = sh(
+                            script: 'curl -k -s -o /dev/null -w "%{http_code}" -m 10 "https://${GRAFANA_HOST}" || echo "000"',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Tentativa ${i}/30 — Pendentes: ${notReady} | HTTP: ${httpStatus}"
+
+                        // 4. Só dá sucesso se réplicas = 1/1 E HTTP for 200/301/302
+                        if (notReady == '0' && (httpStatus == '200' || httpStatus == '301' || httpStatus == '302')) {
+                            echo "✅ Sucesso! Aplicação pronta e respondendo na web."
+                            success = true
+                            break
+                        }
+
+                        // 5. Diagnóstico de erro se o container não subir
+                        if (notReady != '0') {
+                            sh 'docker service ps "${STACK_NAME}_grafana" --no-trunc | head -n 3'
+                        }
+
+                        sleep 10
+                    }
+                    if (!success) {
+                        error "❌ Timeout de 5 minutos — a aplicação não subiu com sucesso."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'rm -f monitoring/grafana/.env || true'
+        }
+        failure {
+            echo "❌ Deploy do ${STACK_NAME} falhou."
+        }
+        success {
+            echo "✅ Deploy do ${STACK_NAME} concluído com sucesso."
+        }
+    }
+}

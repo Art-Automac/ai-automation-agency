@@ -1,0 +1,142 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        STACK_NAME   = 'n8n'
+        COMPOSE_FILE = 'core/n8n/n8n.yaml'
+        IMAGE        = 'n8nio/n8n:2.38.7'
+
+        N8N_DB_HOST        = credentials('n8n-db-host')
+        N8N_DB_PORT        = credentials('n8n-db-port')
+        N8N_DB_USER        = credentials('postgres-user')
+        N8N_DB_PASSWORD    = credentials('postgres-password')
+        N8N_DB_NAME        = credentials('n8n-db-name')
+        N8N_REDIS_HOST     = credentials('n8n-redis-host')
+        N8N_REDIS_PORT     = credentials('n8n-redis-port')
+        N8N_REDIS_PASSWORD = credentials('redis-password')
+        N8N_REDIS_DB       = credentials('n8n-redis-db')
+        N8N_ENCRYPTION_KEY = credentials('n8n-encryption-key')
+        N8N_HOST           = credentials('n8n-host')
+        N8N_DOMAIN         = credentials('n8n-domain')
+        N8N_WEBHOOK_DOMAIN = credentials('n8n-webhook-domain')
+        N8N_WEBHOOK_URL    = credentials('n8n-webhook-url')
+        N8N_SMTP_USER      = credentials('n8n-smtp-user')
+        N8N_SMTP_PASSWORD  = credentials('n8n-smtp-password')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Pull Image') {
+            steps {
+                sh 'docker pull "${IMAGE}"'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    # Gera o arquivo .env no diretório n8n com as variáveis reais
+                    cat <<EOF > core/n8n/.env
+N8N_DB_HOST=${N8N_DB_HOST}
+N8N_DB_PORT=${N8N_DB_PORT}
+N8N_DB_USER=${N8N_DB_USER}
+N8N_DB_PASSWORD=${N8N_DB_PASSWORD}
+N8N_DB_NAME=${N8N_DB_NAME}
+N8N_REDIS_HOST=${N8N_REDIS_HOST}
+N8N_REDIS_PORT=${N8N_REDIS_PORT}
+N8N_REDIS_PASSWORD=${N8N_REDIS_PASSWORD}
+N8N_REDIS_DB=${N8N_REDIS_DB}
+N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+N8N_HOST=${N8N_HOST}
+N8N_DOMAIN=${N8N_DOMAIN}
+N8N_WEBHOOK_DOMAIN=${N8N_WEBHOOK_DOMAIN}
+N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+N8N_SMTP_USER=${N8N_SMTP_USER}
+N8N_SMTP_PASSWORD=${N8N_SMTP_PASSWORD}
+EOF
+
+                    # Deploy contínuo no Docker Swarm
+                    cd core/n8n
+                    docker stack deploy \
+                        --resolve-image always \
+                        -c n8n.yaml \
+                        "${STACK_NAME}"
+
+                    # Aguarda 15 segundos para início da transição
+                    sleep 15
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "Iniciando monitoramento dos serviços do ${STACK_NAME} (até 30 tentativas)..."
+                    def success = false
+
+                    for (int i = 1; i <= 30; i++) {
+                        sh '''
+                            docker stack services "${STACK_NAME}" \
+                                --format 'servico={{.Name}} replicas={{.Replicas}}'
+                        '''
+
+                        def notReady = sh(
+                            script: '''
+                                docker stack services "${STACK_NAME}" \
+                                    --format '{{.Replicas}}' |
+                                    awk -F/ '$1 != $2 {c++} END {print c+0}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        // Teste de integridade HTTP no endpoint /healthz do n8n
+                        def httpStatus = sh(
+                            script: '''
+                                curl -k -s -o /dev/null -w "%{http_code}" -m 10 "https://${N8N_DOMAIN}/healthz" || echo "000"
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Tentativa ${i}/30 — Containers pendentes: ${notReady} | Resposta /healthz: ${httpStatus}"
+
+                        // Sucesso se: todas as réplicas estiverem 1/1 E o /healthz responder HTTP 200
+                        if (notReady == '0' && httpStatus == '200') {
+                            echo "✅ Sucesso! Editor, Webhook e Worker ativos e saudáveis (HTTP 200)."
+                            success = true
+                            break
+                        }
+
+                        if (httpStatus == '404') {
+                            echo "⚠️  Traefik aguardando o n8n_editor iniciar..."
+                        } else if (httpStatus == '502' || httpStatus == '503') {
+                            echo "⚠️  n8n inicializando e conectando no PostgreSQL e Redis..."
+                        }
+
+                        sleep 10
+                    }
+
+                    if (!success) {
+                        error "❌ Timeout de 5 minutos — o n8n não subiu ou não respondeu com sucesso em /healthz."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deploy do ${STACK_NAME} concluído com sucesso."
+        }
+        failure {
+            echo "Deploy do ${STACK_NAME} falhou."
+        }
+        always {
+            sh 'rm -f core/n8n/.env || true'
+        }
+    }
+}

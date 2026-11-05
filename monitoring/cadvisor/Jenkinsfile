@@ -1,0 +1,77 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        STACK_NAME   = 'cadvisor'
+        COMPOSE_FILE = 'monitoring/cadvisor/cadvisor.yml'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Pull Images') {
+            steps {
+                sh '''
+                    docker pull gcr.io/cadvisor/cadvisor:v0.49.1
+                '''
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh 'docker stack deploy --with-registry-auth --resolve-image always -c ${COMPOSE_FILE} ${STACK_NAME}'
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "Aguardando inicialização do ${STACK_NAME} (até 30 tentativas)..."
+                    def success = false
+                    for (int i = 1; i <= 30; i++) {
+                        // 1. Mostra status dos serviços no log
+                        sh 'docker stack services "${STACK_NAME}" --format "servico={{.Name}} replicas={{.Replicas}}"'
+
+                        // 2. Conta containers não convergidos
+                        def notReady = sh(
+                            script: 'docker stack services "${STACK_NAME}" --format "{{.Replicas}}" | awk -F/ \'$1 != $2 {c++} END {print c+0}\'',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Tentativa ${i}/30 — Pendentes: ${notReady}"
+
+                        // 3. Sucesso se todas as réplicas convergiram
+                        if (notReady == '0') {
+                            echo "✅ Sucesso! cAdvisor pronto e convergido em todos os nós."
+                            success = true
+                            break
+                        }
+
+                        // 4. Diagnóstico se houver pendência
+                        sh 'docker service ps "${STACK_NAME}_cadvisor" --no-trunc | head -n 3'
+                        sleep 10
+                    }
+                    if (!success) {
+                        error "❌ Timeout de 5 minutos — o serviço não subiu com sucesso."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'rm -f monitoring/cadvisor/.env || true'
+        }
+        failure {
+            echo "❌ Deploy do ${STACK_NAME} falhou."
+        }
+        success {
+            echo "✅ Deploy do ${STACK_NAME} concluído com sucesso."
+        }
+    }
+}

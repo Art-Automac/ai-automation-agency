@@ -1,0 +1,96 @@
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        STACK_NAME   = 'postgres-exporter'
+        COMPOSE_FILE = 'monitoring/postgres-exporter/postgres-exporter.yml'
+
+        POSTGRES_DB       = credentials('postgres-db')
+        POSTGRES_USER     = credentials('postgres-user')
+        POSTGRES_PASSWORD = credentials('postgres-password')
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Pull Images') {
+            steps {
+                sh '''
+                    docker pull quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+                '''
+            }
+        }
+
+        stage('Stop Previous') {
+            steps {
+                sh '''
+                    docker stack rm ${STACK_NAME} || true
+                    sleep 15
+                '''
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    docker stack deploy \
+                      --resolve-image always \
+                      -c ${COMPOSE_FILE} \
+                      ${STACK_NAME}
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                sh '''
+                    for i in $(seq 1 30); do
+
+                        docker stack services ${STACK_NAME} \
+                            --format 'servico={{.Name}} replicas={{.Replicas}}'
+
+                        NOT_READY=$(docker stack services ${STACK_NAME} \
+                            --format '{{.Replicas}}' |
+                            awk -F/ '$1 != $2 {c++} END {print c+0}')
+
+                        if [ "$NOT_READY" -eq 0 ]; then
+                            echo "✅ Todos os serviços prontos."
+                            exit 0
+                        fi
+
+                        echo "Aguardando... ($i/30)"
+                        sleep 10
+                    done
+
+                    echo "❌ Timeout: serviços não ficaram prontos em 5 min."
+                    exit 1
+                '''
+            }
+        }
+    }
+
+    post {
+
+        failure {
+            echo "❌ Deploy falhou — rollback para versão anterior"
+
+            sh '''
+                git checkout HEAD~1 -- ${COMPOSE_FILE} || true
+
+                docker stack deploy \
+                    --resolve-image always \
+                    -c ${COMPOSE_FILE} \
+                    ${STACK_NAME} || true
+            '''
+        }
+
+        success {
+            echo "✅ Deploy do ${STACK_NAME} concluído"
+        }
+    }
+}

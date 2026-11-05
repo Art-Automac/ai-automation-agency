@@ -1,0 +1,77 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'nodes-swarm'
+    dns_sd_configs:
+      - names:
+          - tasks.node-exporter
+        type: 'A'
+        port: 9100
+
+  # Para nós monitorados fora do Swarm ou via IP direto do host:
+  # Substitua os IPs de exemplo abaixo pelos IPs reais (privados ou com firewall) dos seus nós.
+  - job_name: 'nodes-standalone'
+    static_configs:
+      - targets: ['10.0.0.1:9100']
+        labels:
+          alias: 'Manager'
+      - targets: ['10.0.0.2:9100']
+        labels:
+          alias: 'Worker'
+
+  - job_name: 'containers'
+    static_configs:
+      - targets:
+          - cadvisor:8080
+
+  - job_name: 'grafana'
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - grafana:3000
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets:
+          - postgres-exporter:9187
+
+  - job_name: 'redis'
+    static_configs:
+      - targets:
+          - redis-exporter:9121
+
+  - job_name: 'mariadb'
+    static_configs:
+      - targets:
+          - mariadb-exporter:9104
+
+  - job_name: 'n8n-editor'
+    dns_sd_configs:
+      - names:
+          - tasks.n8n_n8n_editor
+        type: 'A'
+        port: 5678
+    metrics_path: /metrics
+
+  - job_name: 'n8n-webhook'
+    dns_sd_configs:
+      - names:
+          - tasks.n8n_n8n_webhook
+        type: 'A'
+        port: 5678
+    metrics_path: /metrics
+
+  - job_name: 'n8n-worker'
+    dns_sd_configs:
+      - names:
+          - tasks.n8n_n8n_worker
+        type: 'A'
+        port: 5678
+    metrics_path: /metrics

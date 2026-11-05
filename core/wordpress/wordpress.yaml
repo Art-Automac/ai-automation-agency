@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  wordpress:
+    image: wordpress:6-php8.3-apache
+    environment:
+      - WORDPRESS_DB_HOST=mariadb:3306
+      - WORDPRESS_DB_NAME=${MYSQL_DATABASE}
+      - WORDPRESS_DB_USER=${MYSQL_USER}
+      - WORDPRESS_DB_PASSWORD=${MYSQL_PASSWORD}
+      - TZ=America/Sao_Paulo
+      # Permite escrita direta de plugins/temas sem FTP e avisa o WordPress do SSL do Traefik
+      - WORDPRESS_CONFIG_EXTRA=define('FS_METHOD', 'direct'); if (isset($$_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) { $$_SERVER['HTTPS'] = 'on'; }
+    volumes:
+      - wordpress_data:/var/www/html
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == worker1
+      resources:
+        limits:
+          cpus: "1"
+          memory: 768M
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_public
+        - traefik.http.routers.wordpress.rule=Host(`${WP_DOMAIN}`) || Host(`www.${WP_DOMAIN}`)
+        - traefik.http.routers.wordpress.entrypoints=websecure
+        - traefik.http.routers.wordpress.tls=true
+        - traefik.http.routers.wordpress.tls.certresolver=letsencryptresolver
+        - traefik.http.services.wordpress.loadbalancer.server.port=80
+
+networks:
+  network_public:
+    external: true
+
+volumes:
+  wordpress_data:
+    external: true
+    name: wordpress_wordpress_data
