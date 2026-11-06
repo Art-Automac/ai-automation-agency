@@ -102,9 +102,54 @@ function tm_botao_flutuante() {
 }
 add_action( 'wp_footer', 'tm_botao_flutuante' );
 
+// ==============================================================================
+// BLINDAGEM E SEGURANÇA AVANÇADA (PHP & WORDPRESS)
+// ==============================================================================
+
+// 1. Desabilita XML-RPC completamente (impede ataques de força bruta e DDoS multicall)
+add_filter( 'xmlrpc_enabled', '__return_false' );
+add_filter( 'xmlrpc_methods', function ( $methods ) {
+	return array();
+} );
+add_filter( 'pings_open', '__return_false', 20 );
+
+// 2. Remove assinaturas e headers que revelam versões e tecnologias
 remove_action( 'wp_head', 'wp_generator' );
 remove_action( 'wp_head', 'wlwmanifest_link' );
 remove_action( 'wp_head', 'rsd_link' );
+remove_action( 'wp_head', 'wp_shortlink_wp_head' );
+add_filter( 'the_generator', '__return_empty_string' );
+add_filter( 'wp_headers', function ( $headers ) {
+	unset( $headers['X-Pingback'] );
+	return $headers;
+} );
+
+// 3. Bloqueia enumeração de nomes de usuário (impede ataques de força bruta)
+if ( ! is_admin() ) {
+	// Bloqueia scanning via ?author=N
+	if ( isset( $_REQUEST['author'] ) ) {
+		wp_safe_redirect( home_url( '/' ), 301 );
+		exit;
+	}
+
+	// Bloqueia endpoint de listagem de usuários na REST API para visitantes não autenticados
+	add_filter( 'rest_endpoints', function ( $endpoints ) {
+		if ( isset( $endpoints['/wp/v2/users'] ) && ! is_user_logged_in() ) {
+			unset( $endpoints['/wp/v2/users'] );
+		}
+		if ( isset( $endpoints['/wp/v2/users/(?P<id>[\d]+)'] ) && ! is_user_logged_in() ) {
+			unset( $endpoints['/wp/v2/users/(?P<id>[\d]+)'] );
+		}
+		return $endpoints;
+	} );
+}
+
+// 4. Mensagem genérica em falha de login (evita saber se o usuário ou a senha estão corretos)
+add_filter( 'login_errors', function () {
+	return 'Credenciais inválidas. Tente novamente.';
+} );
+
+// 5. Limpeza de scripts de emojis desnecessários
 add_action( 'init', function () {
 	remove_action( 'wp_print_styles', 'print_emoji_styles' );
 	remove_action( 'wp_head', 'print_emoji_detection_script', 7 );

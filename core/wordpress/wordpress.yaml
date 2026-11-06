@@ -9,8 +9,8 @@ services:
       - WORDPRESS_DB_USER=${MYSQL_USER}
       - WORDPRESS_DB_PASSWORD=${MYSQL_PASSWORD}
       - TZ=America/Sao_Paulo
-      # Permite escrita direta de plugins/temas sem FTP e avisa o WordPress do SSL do Traefik
-      - WORDPRESS_CONFIG_EXTRA=define('FS_METHOD', 'direct'); if (isset($$_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) { $$_SERVER['HTTPS'] = 'on'; }
+      # Blindagem do WordPress: trava editor de arquivos web, limita revisões e avisa sobre SSL do Traefik
+      - WORDPRESS_CONFIG_EXTRA=define('FS_METHOD', 'direct'); define('DISALLOW_FILE_EDIT', true); define('WP_POST_REVISIONS', 5); if (isset($$_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) { $$_SERVER['HTTPS'] = 'on'; }
     volumes:
       - wordpress_data:/var/www/html
     networks:
@@ -39,11 +39,57 @@ services:
       labels:
         - traefik.enable=true
         - traefik.docker.network=network_public
-        - traefik.http.routers.wordpress.rule=Host(`${WP_DOMAIN}`) || Host(`www.${WP_DOMAIN}`)
+
+        # ====================================================================
+        # ROTEADOR PRINCIPAL (HTTPS)
+        # ====================================================================
+        - "traefik.http.routers.wordpress.rule=Host(`${WP_DOMAIN}`) || Host(`www.${WP_DOMAIN}`)"
         - traefik.http.routers.wordpress.entrypoints=websecure
         - traefik.http.routers.wordpress.tls=true
         - traefik.http.routers.wordpress.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.wordpress.service=wordpress
+        - "traefik.http.routers.wordpress.middlewares=wp-ratelimit,wp-headers"
         - traefik.http.services.wordpress.loadbalancer.server.port=80
+
+        # ====================================================================
+        # MIDDLEWARES DE SEGURANÇA E RATE LIMIT (ANTI-DDOS E ANTI BRUTE-FORCE)
+        # ====================================================================
+        - "traefik.http.middlewares.wp-ratelimit.ratelimit.average=50"
+        - "traefik.http.middlewares.wp-ratelimit.ratelimit.burst=100"
+        - "traefik.http.middlewares.wp-headers.headers.customresponseheaders.X-Frame-Options=SAMEORIGIN"
+        - "traefik.http.middlewares.wp-headers.headers.customresponseheaders.X-Content-Type-Options=nosniff"
+        - "traefik.http.middlewares.wp-headers.headers.customresponseheaders.X-XSS-Protection=1; mode=block"
+        - "traefik.http.middlewares.wp-headers.headers.customresponseheaders.Referrer-Policy=strict-origin-when-cross-origin"
+        - "traefik.http.middlewares.wp-headers.headers.customresponseheaders.Permissions-Policy=camera=(), microphone=(), geolocation=()"
+
+        # ====================================================================
+        # BLOQUEIO DE BORDAS NA CAMADA DO TRAEFIK (RETORNA 403 FORBIDDEN)
+        # ====================================================================
+        - "traefik.http.middlewares.wp-block-forbidden.ipallowlist.sourcerange=127.0.0.1/32"
+
+        # 1. Bloqueio do xmlrpc.php (impede DDoS e brute force de credenciais)
+        - "traefik.http.routers.wp-xmlrpc.rule=(Host(`${WP_DOMAIN}`) || Host(`www.${WP_DOMAIN}`)) && Path(`/xmlrpc.php`)"
+        - "traefik.http.routers.wp-xmlrpc.priority=100"
+        - "traefik.http.routers.wp-xmlrpc.entrypoints=websecure"
+        - "traefik.http.routers.wp-xmlrpc.tls=true"
+        - "traefik.http.routers.wp-xmlrpc.service=wordpress"
+        - "traefik.http.routers.wp-xmlrpc.middlewares=wp-block-forbidden"
+
+        # 2. Bloqueio de execução de PHP na pasta de uploads (impede webshells e backdoors)
+        - "traefik.http.routers.wp-uploads-php.rule=(Host(`${WP_DOMAIN}`) || Host(`www.${WP_DOMAIN}`)) && PathPrefix(`/wp-content/uploads`) && (PathRegexp(`.*\\.(php|phtml|phar|php[0-9]).*`))"
+        - "traefik.http.routers.wp-uploads-php.priority=100"
+        - "traefik.http.routers.wp-uploads-php.entrypoints=websecure"
+        - "traefik.http.routers.wp-uploads-php.tls=true"
+        - "traefik.http.routers.wp-uploads-php.service=wordpress"
+        - "traefik.http.routers.wp-uploads-php.middlewares=wp-block-forbidden"
+
+        # 3. Bloqueio de arquivos ocultos e sensíveis (.env, .git, wp-config.php)
+        - "traefik.http.routers.wp-sensitive.rule=(Host(`${WP_DOMAIN}`) || Host(`www.${WP_DOMAIN}`)) && (PathPrefix(`/.git`) || PathPrefix(`/.env`) || Path(`/wp-config.php`))"
+        - "traefik.http.routers.wp-sensitive.priority=100"
+        - "traefik.http.routers.wp-sensitive.entrypoints=websecure"
+        - "traefik.http.routers.wp-sensitive.tls=true"
+        - "traefik.http.routers.wp-sensitive.service=wordpress"
+        - "traefik.http.routers.wp-sensitive.middlewares=wp-block-forbidden"
 
 networks:
   network_public:
