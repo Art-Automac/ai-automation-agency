@@ -101,9 +101,8 @@ O repositório foi organizado de forma modular, separando serviços essenciais (
 │   ├── traefik/                     # Edge Proxy reverso e gerenciador SSL Let's Encrypt
 │   │   ├── traefik.yaml
 │   │   └── .env.example
-│   └── wordpress/                   # Portal institucional com Apache e Nginx
+│   └── wordpress/                   # Portal institucional (Apache/PHP 8.3)
 │       ├── wordpress.yaml
-│       ├── nginx.conf
 │       ├── Jenkinsfile
 │       ├── .env.example
 │       └── theme/                   # Tema institucional customizado
@@ -160,7 +159,7 @@ O repositório foi organizado de forma modular, separando serviços essenciais (
 * **Evolution API v2:** API corporativa para envio e recebimento de mensagens WhatsApp com suporte a múltiplas instâncias, Webhooks granulares e integração nativa com o Chatwoot.
 * **Chatwoot:** Plataforma omnichannel de suporte ao cliente unificando canais de WhatsApp, Webchat e e-mail.
 * **Kokoro TTS:** Microsserviço de Text-to-Speech neural rodando inferência ONNX em CPU com baixa latência e autenticação de borda via Traefik Basic-Auth.
-* **WordPress:** Site institucional rodando em Apache/PHP 8.3 integrado a Nginx para compressão e entrega otimizada de assets estáticos.
+* **WordPress:** Site institucional rodando no container oficial Apache/PHP 8.3 com terminação TLS, rate limiting e proteções de borda gerenciadas diretamente pelo Traefik.
 
 ### 3. Camada de Dados e Cache
 * **PostgreSQL 17 + pgvector:** Banco relacional primário com suporte nativo a vetores (embeddings para IA e RAG). Opera de forma 100% privada na rede overlay sem expor portas ao host.
