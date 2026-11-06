@@ -1,4 +1,4 @@
-# 🚀 Core Infrastructure — Plataforma Unificada de Infraestrutura, Automação e Observabilidade
+# 🚀 AI Automation Agency — Plataforma Unificada de Infraestrutura, Automação e Observabilidade
 
 > **Infraestrutura Enterprise para Agência de Automação, Inteligência Artificial e Mensageria Omnicanal**  
 > *Docker Swarm • Traefik • Jenkins CI/CD • PostgreSQL (pgvector) • n8n • Evolution API • Chatwoot • Kokoro TTS • Prometheus • Grafana*  
@@ -213,8 +213,8 @@ docker swarm join --token <WORKER_JOIN_TOKEN> <IP_MANAGER>:2377
 
 ### 2. Clonar o Repositório e Configurar Variáveis Base
 ```bash
-git clone https://github.com/seu-usuario/core-infrastructure.git
-cd core-infrastructure
+git clone https://github.com/Art-Automac/ai-automation-agency.git
+cd ai-automation-agency
 ```
 
 ### 3. Subir a Infraestrutura Base (Traefik, Jenkins e Portainer)
@@ -298,7 +298,7 @@ O script [`scripts/backup.sh`](file:///home/arthurzao/core-infrastructure/script
 
 Para configurar a execução diária às 03:00 da manhã via `crontab`:
 ```bash
-0 3 * * * /bin/bash /caminho/para/core-infrastructure/scripts/backup.sh >> /var/log/backup.log 2>&1
+0 3 * * * /bin/bash /caminho/para/ai-automation-agency/scripts/backup.sh >> /var/log/backup.log 2>&1
 ```
 
 ---
