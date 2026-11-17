@@ -1,10 +1,10 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'TM_VERSAO', '1.0.0' );
-define( 'TM_WHATSAPP', '5511999999999' );
+define( 'TM_VERSAO', '1.0.1' );
+define( 'TM_WHATSAPP', '553175266514' );
 define( 'TM_WHATSAPP_LINK', 'https://wa.me/' . TM_WHATSAPP );
-define( 'TM_WHATSAPP_EXIBICAO', '(11) 99999-9999' );
+define( 'TM_WHATSAPP_EXIBICAO', '(31) 7526-6514' );
 define( 'TM_SLOGAN', 'Tecnologia, automação e inteligência artificial para o seu negócio.' );
 
 // ==============================================================================
@@ -46,6 +46,46 @@ function tm_preconnect( $urls, $relation_type ) {
 	return $urls;
 }
 add_filter( 'wp_resource_hints', 'tm_preconnect', 10, 2 );
+
+// ==============================================================================
+// OTIMIZAÇÃO DE PERFORMANCE MOBILE (REDUÇÃO DE JS E CSS NÃO UTILIZADOS)
+// ==============================================================================
+function tm_otimizar_desempenho() {
+	// Remove scripts e estilos de emojis não utilizados
+	remove_action( 'wp_head', 'print_emoji_detection_script', 7 );
+	remove_action( 'admin_print_scripts', 'print_emoji_detection_script' );
+	remove_action( 'wp_print_styles', 'print_emoji_styles' );
+	remove_action( 'admin_print_styles', 'print_emoji_styles' );
+	remove_filter( 'the_content_feed', 'wp_staticize_emoji' );
+	remove_filter( 'comment_text_rss', 'wp_staticize_emoji' );
+	remove_filter( 'wp_mail', 'wp_staticize_emoji_for_email' );
+
+	// Remove meta tags desnecessárias do cabeçalho
+	remove_action( 'wp_head', 'rsd_link' );
+	remove_action( 'wp_head', 'wlwmanifest_link' );
+	remove_action( 'wp_head', 'wp_generator' );
+	remove_action( 'wp_head', 'wp_shortlink_wp_head' );
+}
+add_action( 'init', 'tm_otimizar_desempenho' );
+
+// Desativa estilos CSS padrão não utilizados na página
+function tm_remover_css_nao_utilizado() {
+	wp_dequeue_style( 'wp-block-library' );
+	wp_dequeue_style( 'wp-block-library-theme' );
+	wp_dequeue_style( 'wc-blocks-style' );
+	wp_dequeue_style( 'classic-theme-styles' );
+	wp_dequeue_style( 'global-styles' );
+}
+add_action( 'wp_enqueue_scripts', 'tm_remover_css_nao_utilizado', 100 );
+
+// Aplica defer no JavaScript do tema para não bloquear a renderização no mobile
+function tm_defer_scripts( $tag, $handle ) {
+	if ( 'tm-principal' === $handle ) {
+		return str_replace( ' src', ' defer="defer" src', $tag );
+	}
+	return $tag;
+}
+add_filter( 'script_loader_tag', 'tm_defer_scripts', 10, 2 );
 
 function tm_icone_svg( $tamanho = 34 ) {
 	return sprintf(
