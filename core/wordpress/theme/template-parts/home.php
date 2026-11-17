@@ -1,3 +1,4 @@
+<?php if ( ! defined( 'ABSPATH' ) ) exit; ?>
 <section class="hero" id="inicio">
   <svg class="hero__malha" aria-hidden="true" width="100%" height="100%">
     <defs>
@@ -13,15 +14,75 @@
     <rect width="100%" height="100%" fill="url(#tmGrade)" mask="url(#tmMask)"></rect>
   </svg>
   <span class="hero__brilho" aria-hidden="true"></span>
+  <span class="hero__brilho-verde" aria-hidden="true"></span>
   <div class="container">
     <div class="hero__conteudo">
-      <span class="eyebrow">Tecnologia · Automação · Inteligência Artificial</span>
-      <h1>Seu negócio inteligente:</h1>
-      <p class="hero__sub">tecnologia, automação e inteligência artificial para o seu negócio.</p>
-      <p class="hero__apoio">Da automação de WhatsApp à infraestrutura em nuvem — cuidamos da tecnologia pra você focar na escala do seu negócio.</p>
+      <div class="hero__badge">
+        <span class="pulse-dot"></span>
+        <span>Automação &amp; Inteligência Artificial</span>
+      </div>
+      <h1>Seu negócio inteligente com <span>Automação &amp; IA</span></h1>
+      <p class="hero__sub">Escale vendas e elimine gargalos manuais com tecnologia sob medida.</p>
+      <p class="hero__apoio">Da automação inteligente no WhatsApp à infraestrutura cloud de alta performance — cuidamos de toda a tecnologia para sua empresa crescer sem limites.</p>
       <div class="hero__botoes">
-        <a class="btn btn--laranja btn--grande" href="<?php echo esc_url( TM_WHATSAPP_LINK ); ?>" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Fale conosco</a>
-        <a class="btn btn--fantasma btn--grande" href="#servicos">Conheça os serviços</a>
+        <a class="btn btn--destaque btn--grande" href="<?php echo esc_url( TM_WHATSAPP_LINK ); ?>" target="_blank" rel="noopener">
+          <i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Falar com Especialista
+        </a>
+        <a class="btn btn--fantasma btn--grande" href="#servicos">
+          Conhecer Serviços <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+        </a>
+      </div>
+      <div class="hero__metricas">
+        <div class="metrica-item">
+          <strong>24/7</strong>
+          <span>Atendimento com IA</span>
+        </div>
+        <div class="metrica-divisor"></div>
+        <div class="metrica-item">
+          <strong>+85%</strong>
+          <span>Tempo Economizado</span>
+        </div>
+        <div class="metrica-divisor"></div>
+        <div class="metrica-item">
+          <strong>99.9%</strong>
+          <span>Uptime de Servidores</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual Atraente com Glasmorfismo -->
+    <div class="hero__visual">
+      <div class="card-vidro">
+        <div class="card-vidro__topo">
+          <div class="pontos-mac">
+            <span class="ponto-mac"></span>
+            <span class="ponto-mac"></span>
+            <span class="ponto-mac"></span>
+          </div>
+          <span class="status-live"><span class="pulse-dot"></span> Operação Ativa</span>
+        </div>
+        
+        <div class="chat-simulado">
+          <div class="chat-msg chat-msg--cliente">
+            <span class="chat-nome">Cliente</span>
+            <p>Olá! Quero automatizar o atendimento e as vendas da minha empresa via WhatsApp.</p>
+          </div>
+          <div class="chat-msg chat-msg--ia">
+            <div class="chat-ia-cabecalho">
+              <span class="badge-ia"><i class="fa-solid fa-bolt" aria-hidden="true"></i> Agente IA Especialista</span>
+              <span class="hora-simulada">Agora</span>
+            </div>
+            <p>Com certeza! Nossos agentes de IA qualificam seus leads, tiram dúvidas em tempo real e integram os dados direto no seu CRM sem perder nenhum cliente. 🚀</p>
+          </div>
+        </div>
+
+        <div class="card-vidro__footer">
+          <div class="chip-status">
+            <i class="fa-solid fa-microchip" aria-hidden="true"></i>
+            <span>n8n + Agentes IA + WhatsApp API</span>
+          </div>
+          <span class="badge-destaque">Online</span>
+        </div>
       </div>
     </div>
   </div>
@@ -94,7 +155,7 @@
       <article class="passo revelar"><span class="passo__num" aria-hidden="true"></span><i class="fa-solid fa-rocket" aria-hidden="true"></i><h3>Seu negócio começa a funcionar melhor</h3><p>Colocamos no ar, acompanhamos os números e ajustamos junto com você.</p></article>
     </div>
     <div class="centro-acao revelar">
-      <a class="btn btn--laranja btn--grande" href="<?php echo esc_url( TM_WHATSAPP_LINK ); ?>" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Quero começar agora</a>
+      <a class="btn btn--destaque btn--grande" href="<?php echo esc_url( TM_WHATSAPP_LINK ); ?>" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Quero começar agora</a>
     </div>
   </div>
 </section>
@@ -191,8 +252,10 @@
 <section class="secao cta" id="contato">
   <svg class="cta__malha" aria-hidden="true" width="100%" height="100%"><rect width="100%" height="100%" fill="url(#tmGrade)"></rect></svg>
   <div class="container revelar">
-    <h2>Pronto pra transformar seu negócio?</h2>
-    <p>Fale com a gente agora e receba uma análise gratuita da sua operação.</p>
-    <a class="btn btn--laranja btn--grande" href="<?php echo esc_url( TM_WHATSAPP_LINK ); ?>" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Falar no WhatsApp</a>
+    <div class="cta__card-vidro">
+      <h2>Pronto pra transformar seu negócio?</h2>
+      <p>Fale com a gente agora e receba uma análise gratuita da sua operação com nossos especialistas.</p>
+      <a class="btn btn--destaque btn--grande" href="<?php echo esc_url( TM_WHATSAPP_LINK ); ?>" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Falar no WhatsApp</a>
+    </div>
   </div>
 </section>

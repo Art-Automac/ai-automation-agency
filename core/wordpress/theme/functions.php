@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'TM_VERSAO', '1.0.1' );
+define( 'TM_VERSAO', '1.1.0' );
 define( 'TM_WHATSAPP', '553175266514' );
 define( 'TM_WHATSAPP_LINK', 'https://wa.me/' . TM_WHATSAPP );
 define( 'TM_WHATSAPP_EXIBICAO', '(31) 7526-6514' );
@@ -90,9 +90,9 @@ add_filter( 'script_loader_tag', 'tm_defer_scripts', 10, 2 );
 function tm_icone_svg( $tamanho = 34 ) {
 	return sprintf(
 		'<svg width="%1$d" height="%1$d" viewBox="0 0 40 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' .
-		'<path d="M0,0 L40,0 L40,9 L26,9 L26,52 L14,52 L14,9 L0,9Z" fill="#002D6E"/>' .
+		'<path d="M0,0 L40,0 L40,9 L26,9 L26,52 L14,52 L14,9 L0,9Z" fill="#0131CD"/>' .
 		'<polygon points="17,52 26,52 26,20 17,30" fill="white"/>' .
-		'<polygon points="26,52 26,30 35,52" fill="#E85D04"/>' .
+		'<polygon points="26,52 26,30 35,52" fill="#B9FC01"/>' .
 		'</svg>',
 		(int) $tamanho
 	);

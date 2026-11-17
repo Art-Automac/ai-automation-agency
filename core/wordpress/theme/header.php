@@ -23,7 +23,7 @@
 			?>
 		</nav>
 		<div class="acoes-cabecalho">
-			<a class="btn btn--laranja" href="<?php echo esc_url( TM_WHATSAPP_LINK ); ?>" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Fale conosco</a>
+			<a class="btn btn--destaque" href="<?php echo esc_url( TM_WHATSAPP_LINK ); ?>" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Fale conosco</a>
 			<button class="abre-menu" type="button" aria-expanded="false" aria-controls="menu-principal" aria-label="Abrir menu"><i class="fa-solid fa-bars" aria-hidden="true"></i></button>
 		</div>
 	</div>
