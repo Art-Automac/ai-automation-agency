@@ -7,6 +7,14 @@ define( 'TM_WHATSAPP_LINK', 'https://wa.me/' . TM_WHATSAPP );
 define( 'TM_WHATSAPP_EXIBICAO', '(11) 99999-9999' );
 define( 'TM_SLOGAN', 'Tecnologia, automação e inteligência artificial para o seu negócio.' );
 
+// ==============================================================================
+// CONFIGURAÇÕES DE RASTREAMENTO, ANALYTICS E GOOGLE SEARCH CONSOLE
+// Preencha com os seus IDs para ativar o rastreamento automaticamente:
+// ==============================================================================
+define( 'TM_GA4_ID', 'G-NK82MTY92L' );      // Google Analytics 4 (Ativo)
+define( 'TM_META_PIXEL_ID', '' );          // Meta Pixel / Facebook (Exemplo: '123456789012345')
+define( 'TM_GOOGLE_SITE_VERIFICATION', '' ); // Google Search Console (Código da tag meta)
+
 function tm_setup() {
 	load_theme_textdomain( 'agency-theme', get_template_directory() . '/languages' );
 	add_theme_support( 'title-tag' );
@@ -78,21 +86,124 @@ function tm_marca( $classe_extra = '' ) {
 
 function tm_meta_seo() {
 	if ( ! is_front_page() ) return;
-	$descricao = 'Automação de processos, inteligência artificial, infraestrutura cloud e mensageria omnichannel. ' . TM_SLOGAN;
+	$descricao = 'Agência de automação de processos, inteligência artificial, agentes de WhatsApp, infraestrutura cloud e integração de sistemas sob medida.';
+	$keywords  = 'automação de processos, inteligência artificial, agentes de IA, whatsapp api, n8n, chatbots, infraestrutura cloud, desenvolvimento web';
 	?>
 	<meta name="description" content="<?php echo esc_attr( $descricao ); ?>">
+	<meta name="keywords" content="<?php echo esc_attr( $keywords ); ?>">
+	<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+	<link rel="canonical" href="<?php echo esc_url( home_url( '/' ) ); ?>">
+	<?php if ( ! empty( TM_GOOGLE_SITE_VERIFICATION ) ) : ?>
+	<meta name="google-site-verification" content="<?php echo esc_attr( TM_GOOGLE_SITE_VERIFICATION ); ?>">
+	<?php endif; ?>
 	<meta property="og:type" content="website">
-	<meta property="og:site_name" content="Core Agency">
-	<meta property="og:title" content="Core Agency — <?php echo esc_attr( TM_SLOGAN ); ?>">
+	<meta property="og:locale" content="pt_BR">
+	<meta property="og:site_name" content="<?php bloginfo( 'name' ); ?>">
+	<meta property="og:title" content="<?php bloginfo( 'name' ); ?> — <?php echo esc_attr( TM_SLOGAN ); ?>">
 	<meta property="og:description" content="<?php echo esc_attr( $descricao ); ?>">
 	<meta property="og:url" content="<?php echo esc_url( home_url( '/' ) ); ?>">
 	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:title" content="<?php bloginfo( 'name' ); ?> — <?php echo esc_attr( TM_SLOGAN ); ?>">
+	<meta name="twitter:description" content="<?php echo esc_attr( $descricao ); ?>">
 	<script type="application/ld+json">
-	{"@context":"https://schema.org","@type":"ProfessionalService","name":"Core Agency","slogan":"<?php echo esc_js( TM_SLOGAN ); ?>","url":"<?php echo esc_url( home_url( '/' ) ); ?>","telephone":"+<?php echo esc_js( TM_WHATSAPP ); ?>","areaServed":"BR","address":{"@type":"PostalAddress","addressRegion":"MG","addressCountry":"BR"}}
+	{"@context":"https://schema.org","@type":"ProfessionalService","name":"<?php bloginfo( 'name' ); ?>","slogan":"<?php echo esc_js( TM_SLOGAN ); ?>","description":"<?php echo esc_js( $descricao ); ?>","url":"<?php echo esc_url( home_url( '/' ) ); ?>","telephone":"+<?php echo esc_js( TM_WHATSAPP ); ?>","areaServed":"BR","address":{"@type":"PostalAddress","addressRegion":"MG","addressCountry":"BR"}}
 	</script>
 	<?php
 }
 add_action( 'wp_head', 'tm_meta_seo', 5 );
+
+// ==============================================================================
+// RASTREAMENTO: GOOGLE ANALYTICS 4 & META PIXEL COM EVENTO DE WHATSAPP
+// ==============================================================================
+function tm_tracking_scripts() {
+	// 1. Google Analytics 4 (GA4)
+	if ( ! empty( TM_GA4_ID ) ) {
+		?>
+		<!-- Google tag (gtag.js) -->
+		<script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo esc_attr( TM_GA4_ID ); ?>"></script>
+		<script>
+		  window.dataLayer = window.dataLayer || [];
+		  function gtag(){dataLayer.push(arguments);}
+		  gtag('js', new Date());
+		  gtag('config', '<?php echo esc_js( TM_GA4_ID ); ?>');
+		</script>
+		<?php
+	}
+
+	// 2. Meta Pixel (Facebook / Instagram)
+	if ( ! empty( TM_META_PIXEL_ID ) ) {
+		?>
+		<!-- Meta Pixel Code -->
+		<script>
+		!function(f,b,e,v,n,t,s)
+		{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+		n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+		if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+		n.queue=[];t=b.createElement(e);t.async=!0;
+		t.src=v;s=b.getElementsByTagName(e)[0];
+		s.parentNode.insertBefore(t,s)}(window, document,'script',
+		'https://connect.facebook.net/en_US/fbevents.js');
+		fbq('init', '<?php echo esc_js( TM_META_PIXEL_ID ); ?>');
+		fbq('track', 'PageView');
+		</script>
+		<!-- End Meta Pixel Code -->
+		<?php
+	}
+
+	// 3. Monitoramento de Conversão de Cliques no WhatsApp (dispara para GA4 e Meta Pixel)
+	if ( ! empty( TM_GA4_ID ) || ! empty( TM_META_PIXEL_ID ) ) {
+		?>
+		<script>
+		document.addEventListener('DOMContentLoaded', function () {
+			var zapButtons = document.querySelectorAll('a[href*="wa.me"], a[href*="whatsapp.com"], .zap-flutuante');
+			zapButtons.forEach(function (btn) {
+				btn.addEventListener('click', function () {
+					if (typeof fbq === 'function') {
+						fbq('track', 'Contact', { content_name: 'WhatsApp Click' });
+						fbq('track', 'Lead', { content_name: 'WhatsApp Click' });
+					}
+					if (typeof gtag === 'function') {
+						gtag('event', 'generate_lead', {
+							'event_category': 'Engagement',
+							'event_label': 'WhatsApp Click'
+						});
+					}
+				});
+			});
+		});
+		</script>
+		<?php
+	}
+}
+add_action( 'wp_head', 'tm_tracking_scripts', 10 );
+
+// Noscript de fallback para Meta Pixel
+function tm_meta_pixel_noscript() {
+	if ( empty( TM_META_PIXEL_ID ) ) return;
+	?>
+	<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=<?php echo esc_attr( TM_META_PIXEL_ID ); ?>&ev=PageView&noscript=1"/></noscript>
+	<?php
+}
+add_action( 'wp_body_open', 'tm_meta_pixel_noscript' );
+
+// ==============================================================================
+// ROBOTS.TXT DINÂMICO PARA GOOGLE E RASTREADORES DE IA (GPTBot, Claude, etc.)
+// ==============================================================================
+function tm_custom_robots_txt() {
+	echo "User-agent: *\n";
+	echo "Allow: /\n";
+	echo "Disallow: /wp-admin/\n";
+	echo "Allow: /wp-admin/admin-ajax.php\n\n";
+
+	// Libera e otimiza para rastreadores de inteligência artificial
+	echo "User-agent: GPTBot\nAllow: /\n\n";
+	echo "User-agent: ChatGPT-User\nAllow: /\n\n";
+	echo "User-agent: ClaudeBot\nAllow: /\n\n";
+	echo "User-agent: PerplexityBot\nAllow: /\n\n";
+
+	echo "Sitemap: " . esc_url( home_url( '/wp-sitemap.xml' ) ) . "\n";
+}
+add_action( 'do_robotstxt', 'tm_custom_robots_txt', 100 );
 
 function tm_botao_flutuante() {
 	printf(
