@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'TM_VERSAO', '1.1.0' );
+define( 'TM_VERSAO', '1.1.1' );
 define( 'TM_WHATSAPP', '553175266514' );
 define( 'TM_WHATSAPP_LINK', 'https://wa.me/' . TM_WHATSAPP );
 define( 'TM_WHATSAPP_EXIBICAO', '(31) 7526-6514' );
@@ -119,7 +119,7 @@ function tm_marca( $classe_extra = '' ) {
 		return;
 	}
 	printf(
-		'<a class="%1$s" href="%2$s"><span class="marca-simbolo">%3$s</span><span>Core<span class="marca-destaque">Agency</span></span></a>',
+		'<a class="%1$s" href="%2$s"><span class="marca-simbolo">%3$s</span><span>Thu<span class="marca-destaque">Mark</span></span></a>',
 		esc_attr( $classe ), esc_url( home_url( '/' ) ), tm_icone_svg( 34 )
 	);
 }

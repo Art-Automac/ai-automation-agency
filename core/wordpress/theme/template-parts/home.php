@@ -69,7 +69,7 @@
           </div>
           <div class="chat-msg chat-msg--ia">
             <div class="chat-ia-cabecalho">
-              <span class="badge-ia"><i class="fa-solid fa-bolt" aria-hidden="true"></i> Agente IA Especialista</span>
+              <span class="badge-ia"><i class="fa-solid fa-bolt" aria-hidden="true"></i> Agente IA ThuMark</span>
               <span class="hora-simulada">Agora</span>
             </div>
             <p>Com certeza! Nossos agentes de IA qualificam seus leads, tiram dúvidas em tempo real e integram os dados direto no seu CRM sem perder nenhum cliente. 🚀</p>

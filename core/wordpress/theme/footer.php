@@ -25,7 +25,7 @@
 			</div>
 		</div>
 		<div class="rodape__base">
-			<span>&copy; <?php echo esc_html( date_i18n( 'Y' ) ); ?> Core Agency. Todos os direitos reservados.</span>
+			<span>&copy; <?php echo esc_html( date_i18n( 'Y' ) ); ?> ThuMark. Todos os direitos reservados.</span>
 			<span>Feito no interior de Minas.</span>
 		</div>
 	</div>
